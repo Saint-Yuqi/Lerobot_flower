@@ -39,7 +39,7 @@ Four concrete upstream-code-rot issues surfaced during the spike (see "Adapter s
 
 - `lerobot==0.5.1` installed; `from lerobot.optim.optimizers import AdamConfig` imports cleanly.
 - All three target HF datasets exist and are accessible:
-  - `ethrl2026/task1_20260509_prompt_lighting_augmented_360` (private, 360 eps, 165828 frames, natural-language prompts)
+  - `ethrl2026/task1_20260509_plus` (private, natural-language prompts)
   - `ethrl2026/task2_20260509_stage2_random_lighting_augmented_2160` (private, 2160 eps, 870828 frames, natural-language prompts)
   - `ethrl2026/so101_pickup_20260509_185350_task3` (private, 45 eps, 18959 frames, **encoded labels** `Y+L`, `T+M`, etc.)
 - HF whoami: `PrajnaYang`, member of `ethrl2026` org → can push to the eval{1,2,3}-flower-v1 repos.
