@@ -52,7 +52,7 @@ Configs share schema with the SmolVLA repo (`experiment_name`, `data`,
 ```bash
 python scripts/eval_offline_flower.py \
     --checkpoint <ckpt dir or HF id> \
-    --dataset ethrl2026/task1_20260509_prompt_lighting_augmented_360 \
+    --dataset ethrl2026/task1_20260509_plus \
     --out reports/eval1_step20000.json
 ```
 
@@ -78,25 +78,24 @@ python scripts/run_inference_flower.py \
 
 ## Data layout
 
-The HuggingFace dataset snapshots are **not** in this repo. They live in
-the sibling SmolVLA repo and are referenced by absolute path:
+The HuggingFace dataset snapshots are **not** in this repo. The configs
+default to `root: null`, which triggers `snapshot_download` from the HF
+Hub on first run and caches to `~/.cache/huggingface/`.
+
+If multiple jobs launch concurrently and you start seeing 429s, pre-cache
+the snapshot once and point `root` at it:
+
+```bash
+huggingface-cli download --repo-type dataset --revision v3.0 \
+    ethrl2026/task1_20260509_plus \
+    --local-dir /shares/feldmann.ics.mnf.uzh/Yuqi/Lerobot/data/hf/task1_20260509_plus
+```
 
 ```yaml
 # configs/train/full_eval1.yaml
 data:
-  root: /shares/feldmann.ics.mnf.uzh/Yuqi/Lerobot/data/hf/task1_20260509_prompt_lighting_augmented_360
+  root: /shares/feldmann.ics.mnf.uzh/Yuqi/Lerobot/data/hf/task1_20260509_plus
 ```
-
-To repopulate (if the snapshot is missing):
-
-```bash
-huggingface-cli download --repo-type dataset --revision v3.0 \
-    ethrl2026/task1_20260509_prompt_lighting_augmented_360 \
-    --local-dir /shares/feldmann.ics.mnf.uzh/Yuqi/Lerobot/data/hf/task1_20260509_prompt_lighting_augmented_360
-```
-
-`full_eval3.yaml` and the `overfit*.yaml` configs have `root: null` and
-pull from the HF Hub cache directly.
 
 ## Phase-weighted sampling
 

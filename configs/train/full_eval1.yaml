@@ -1,16 +1,17 @@
-# FlowerVLA training on the augmented task1 dataset (360 episodes).
-# Flower-env equivalent of full_eval1_v2.yaml — same data, different model.
+# FlowerVLA training on the current task1 dataset.
 
 experiment_name: eval1_flower_v1
 seed: 42
 
 data:
-  repo_id: ethrl2026/task1_20260509_prompt_lighting_augmented_360
-  # Pre-downloaded snapshot lives in the SmolVLA repo's shared data dir (avoids HF Hub 429s
-  # when eval1/eval2 launch concurrently). Populate once with: huggingface-cli download
-  # --repo-type dataset --revision v3.0 ethrl2026/task1_20260509_prompt_lighting_augmented_360
-  # --local-dir /shares/feldmann.ics.mnf.uzh/Yuqi/Lerobot/data/hf/task1_20260509_prompt_lighting_augmented_360
-  root: /shares/feldmann.ics.mnf.uzh/Yuqi/Lerobot/data/hf/task1_20260509_prompt_lighting_augmented_360
+  repo_id: ethrl2026/task1_20260509_plus
+  # `root: null` → snapshot_download on first run. To pre-cache and avoid HF
+  # Hub 429s when multiple jobs launch concurrently, run e.g.
+  #   huggingface-cli download --repo-type dataset --revision v3.0 \
+  #     ethrl2026/task1_20260509_plus \
+  #     --local-dir /shares/feldmann.ics.mnf.uzh/Yuqi/Lerobot/data/hf/task1_20260509_plus
+  # then set `root` to that path.
+  root: null
   episodes: null
   video_key: observation.images.main
   val:
@@ -67,4 +68,4 @@ logging:
   project: Lerobot
   entity: saint-yangyuqi-university-of-z-rich
   mode: online
-  tags: [eval1, flowervla, task1-augmented]
+  tags: [eval1, flowervla, task1-plus]
