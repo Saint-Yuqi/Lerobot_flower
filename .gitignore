@@ -1,0 +1,30 @@
+# Data and checkpoints — big binary files do not belong in git
+data/raw/
+data/processed/
+checkpoints/
+checkpoints
+logs/
+wandb/
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.eggs/
+*.egg-info/
+build/
+dist/
+scratch/
+scratch
+# IDE
+.idea/
+.vscode/
+.ipynb_checkpoints/
+*.swp
+
+# OS
+.DS_Store

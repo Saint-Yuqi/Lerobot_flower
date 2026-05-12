@@ -1,0 +1,43 @@
+# FlowerVLA overfit smoke test — must run end-to-end in <10 min on one A100.
+# Goal: prove the full pipeline (dataset, policy forward, optim, eval, save) is
+# wired together and that loss drops over a few hundred steps on a single episode.
+# This is the equivalent of overfit_test.py for SmolVLA — small + fast.
+
+experiment_name: overfit_flower
+seed: 42
+
+data:
+  repo_id: ethrl2026/so101_pickup_20260509_185350_task3
+  root: null
+  episodes: [0]               # single episode → small, repeats fast
+  video_key: observation.images.main
+
+model:
+  vlm_path: microsoft/Florence-2-base
+  chunk_size: 50
+  freeze_florence: true
+  freeze_vision_tower: true
+  use_proprio: false
+  use_second_view: false
+  image_hw: 224
+  default_action_type: 3      # so101 (F5)
+  num_sampling_steps: 4
+  dit_dim: 512
+  n_heads: 16
+  n_layers: 12
+
+train:
+  batch_size: 4
+  num_workers: 0   # fork-after-CUDA deadlocks with >0; 416 frames is fine single-process
+  num_steps: 200              # short — just prove loss drops
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  warmup_steps: 20
+  log_every: 10
+  save_every: 100
+  eval_every: 100
+  output_dir: checkpoints/overfit_flower
+  device: cuda
+  pass_criteria:
+    initial_loss_at_least: 0.5
+    final_loss_at_most: 0.5

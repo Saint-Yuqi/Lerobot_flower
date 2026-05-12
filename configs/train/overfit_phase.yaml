@@ -1,0 +1,56 @@
+# FlowerVLA overfit smoke test WITH phase-weighted sampler on.
+# Sibling of `overfit_flower.yaml`; keep that one at `phase_sampling.enabled=false`
+# so it remains the clean baseline-regression smoke. This one's job: prove the
+# sampler + alignment assert + label computation actually run end-to-end and
+# the loss still drops similarly.
+#
+# Uses episode [0] from task3 — single episode → tiny dataset → fast. Phase
+# detection on a single episode is degenerate-ish (one t* either way), but
+# the wiring (compute_phase_labels cache, assert_dataset_alignment, sampler
+# with replacement) must execute.
+
+experiment_name: overfit_flower_phase
+seed: 42
+
+data:
+  repo_id: ethrl2026/so101_pickup_20260509_185350_task3
+  root: null
+  episodes: [0]               # single episode → small, repeats fast
+  video_key: observation.images.main
+
+model:
+  vlm_path: microsoft/Florence-2-base
+  chunk_size: 50
+  freeze_florence: true
+  freeze_vision_tower: true
+  use_proprio: false
+  use_second_view: false
+  image_hw: 224
+  default_action_type: 3      # so101 (F5)
+  num_sampling_steps: 4
+  dit_dim: 512
+  n_heads: 16
+  n_layers: 12
+
+train:
+  batch_size: 4
+  num_workers: 0   # fork-after-CUDA deadlocks with >0 here; 416 frames is fine single-process
+  num_steps: 200              # short — just prove loss drops + sampler wires up
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  warmup_steps: 20
+  log_every: 10
+  save_every: 100
+  eval_every: 100
+  output_dir: checkpoints/overfit_flower_phase
+  device: cuda
+  pass_criteria:
+    initial_loss_at_least: 0.5
+    final_loss_at_most: 0.5
+  phase_sampling:
+    enabled: true             # ON: sampler integration smoke test
+    weight_pregrasp: 3.0      # aggressive upweight so the difference is visible
+    open_frac: 0.6
+    close_frac: 0.4
+    min_amplitude: 5.0
+    post_close_margin: 3

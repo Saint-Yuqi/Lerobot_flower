@@ -1,0 +1,69 @@
+# FlowerVLA training on task3 (45 episodes, encoded prompts like Y+L, T+M, ...).
+# Smallest of the three datasets — useful for quick iteration.
+# Note: task3 prompts don't contain color words, so color-stratified split lumps
+# everything into "other" — splitter still works but per-color counts are
+# meaningless. Plain fraction split.
+
+experiment_name: eval3_flower_v1
+seed: 42
+
+data:
+  repo_id: ethrl2026/so101_pickup_20260509_185350_task3
+  root: null
+  episodes: null
+  video_key: observation.images.main
+  val:
+    fraction: 0.1
+    min_train_per_color: 3
+
+model:
+  vlm_path: microsoft/Florence-2-base
+  chunk_size: 50
+  freeze_florence: true
+  freeze_vision_tower: true
+  use_proprio: false
+  use_second_view: false
+  image_hw: 224
+  default_action_type: 3
+  num_sampling_steps: 4
+  dit_dim: 512
+  n_heads: 16
+  n_layers: 12
+
+train:
+  batch_size: 32
+  grad_accum_steps: 4
+  num_workers: 4
+  num_steps: 20000
+  lr: 5.0e-5
+  weight_decay: 1.0e-5
+  warmup_steps: 500
+  log_every: 50
+  save_every: 2000
+  eval_every: 250
+  output_dir: checkpoints/eval3_flower_v1
+  device: cuda
+  early_stop:
+    enabled: true
+    patience: 10
+    min_delta: 0.005
+    min_steps: 2500
+  phase_sampling:
+    enabled: true              # phase-weighted sampling ON for A/B; weight_pregrasp=2.0
+    weight_pregrasp: 2.0       # 1.0 = uniform-with-replacement (NOT identical to shuffle=True)
+    open_frac: 0.6             # fraction of (g_max - g_min) above min for "open"
+    close_frac: 0.4            # below this for "closed"
+    min_amplitude: 5.0         # episodes with smaller gripper motion fall back to all-pregrasp
+    post_close_margin: 3       # frames after first close to confirm stability (~100ms @30fps)
+
+hf:
+  push: true
+  repo_id: "ethrl2026/so101-eval3-flower-v1"
+  private: true
+
+logging:
+  use_wandb: true
+  project: Lerobot
+  entity: saint-yangyuqi-university-of-z-rich
+  mode: online
+  tags: [eval3, flowervla, task3]

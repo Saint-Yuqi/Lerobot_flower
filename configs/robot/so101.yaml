@@ -1,0 +1,32 @@
+# SO-101 robot configuration.
+# Adjust to match your specific arm calibration after running
+# `lerobot-calibrate` on the unit you received.
+
+robot_type: so101
+control_hz: 30
+action_dim: 6                  # 6 DoF arm
+action_space: joint_position   # absolute joint targets
+gripper_in_action: true        # SO-101 includes a gripper joint
+
+cameras:
+  # Default: wrist camera as shipped. To switch to shoulder mount for a
+  # specific eval, override this in the per-eval data config.
+  wrist:
+    type: opencv
+    index: 0
+    fps: 30
+    width: 640
+    height: 480
+
+joint_limits_deg:
+  # Adjust to your unit's actual safe range. Conservative defaults:
+  shoulder_pan:    [-90, 90]
+  shoulder_lift:   [-90, 30]
+  elbow_flex:      [-110, 0]
+  wrist_flex:      [-90, 90]
+  wrist_roll:      [-180, 180]
+  gripper:         [0, 100]    # percent open
+
+# Safety: clamp predicted actions to these limits before sending.
+# Implement in src/inference/safety.py.
+clamp_actions: true

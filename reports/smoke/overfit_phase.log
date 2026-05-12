@@ -1,0 +1,36 @@
+/shares/feldmann.ics.mnf.uzh/Yuqi/conda/envs/flower/lib/python3.10/site-packages/lightning_fabric/__init__.py:36: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  __import__("pkg_resources").declare_namespace(__name__)
+[overfit] config: configs/train/overfit_flower_phase.yaml
+[overfit] experiment: overfit_flower_phase
+[overfit] output_dir: checkpoints/overfit_flower_phase/20260511-224829
+Fetching 138 files:   0%|          | 0/138 [00:00<?, ?it/s]Fetching 138 files: 100%|██████████| 138/138 [00:00<00:00, 5783.17it/s]
+The new embeddings will be initialized from a multivariate normal distribution that has old embeddings' mean and covariance. As described in this article: https://nlp.stanford.edu/~johnhew/vocab-expansion.html. To disable this, use `mean_resizing=False`
+[overfit] dataset: FlowerSO101Dataset(repo_id='ethrl2026/so101_pickup_20260509_185350_task3', frames=416, episodes=1, chunk=50, video_key='observation.images.main', resize_hw=224)
+[overfit] phase_sampling: {'label': 'ethrl2026/so101_pickup_20260509_185350_task3', 'n_total': 416, 'n_pregrasp': 204, 'pregrasp_frac': 0.49038461538461536, 'n_failed_close': 0, 'n_episodes': 1, 'failed_close_rate': 0.0}
+Loading Florence-2 from microsoft/Florence-2-base
+[overfit] trainable params: 76,678,437
+[overfit] step=   0/200  loss=1.3871  avg=1.3871  lr=1.00e-05  0.11 steps/s
+[overfit] step=  10/200  loss=0.8942  avg=1.0899  lr=6.00e-05  1.03 steps/s
+[overfit] step=  20/200  loss=0.6213  avg=0.9380  lr=1.00e-04  1.71 steps/s
+[overfit] step=  30/200  loss=0.2974  avg=0.6482  lr=9.92e-05  2.24 steps/s
+[overfit] step=  40/200  loss=0.4734  avg=0.4513  lr=9.70e-05  2.66 steps/s
+[overfit] step=  50/200  loss=0.3757  avg=0.4207  lr=9.36e-05  3.00 steps/s
+[overfit] step=  60/200  loss=0.2376  avg=0.3851  lr=8.90e-05  3.29 steps/s
+[overfit] step=  70/200  loss=0.1748  avg=0.3209  lr=8.33e-05  3.54 steps/s
+[overfit] step=  80/200  loss=0.2141  avg=0.2640  lr=7.68e-05  3.75 steps/s
+[overfit] step=  90/200  loss=0.2335  avg=0.2341  lr=6.97e-05  3.96 steps/s
+[overfit] step= 100/200  loss=0.1465  avg=0.2395  lr=6.20e-05  4.12 steps/s
+[overfit] step= 110/200  loss=0.1876  avg=0.2195  lr=5.42e-05  4.27 steps/s
+[overfit] step= 120/200  loss=0.2349  avg=0.1958  lr=4.64e-05  4.38 steps/s
+[overfit] step= 130/200  loss=0.1329  avg=0.1861  lr=3.89e-05  4.48 steps/s
+[overfit] step= 140/200  loss=0.3177  avg=0.1913  lr=3.18e-05  4.56 steps/s
+[overfit] step= 150/200  loss=0.1415  avg=0.2000  lr=2.55e-05  4.65 steps/s
+[overfit] step= 160/200  loss=0.1133  avg=0.1733  lr=2.00e-05  4.73 steps/s
+[overfit] step= 170/200  loss=0.1542  avg=0.1548  lr=1.56e-05  4.80 steps/s
+[overfit] step= 180/200  loss=0.2009  avg=0.1539  lr=1.25e-05  4.81 steps/s
+[overfit] step= 190/200  loss=0.0995  avg=0.1357  lr=1.06e-05  4.88 steps/s
+[overfit] saved checkpoint -> checkpoints/overfit_flower_phase/20260511-224829/final
+[overfit] initial_loss=1.38711678981781
+[overfit] final_avg_loss=0.1326
+[overfit] pass_criteria: initial>=0.5 final<=0.5
+[overfit] PASS

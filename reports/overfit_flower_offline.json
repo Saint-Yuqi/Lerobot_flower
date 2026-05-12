@@ -1,0 +1,120 @@
+{
+  "checkpoint": "checkpoints/overfit_flower/20260511-183549/final",
+  "checkpoint_path": "checkpoints/overfit_flower/20260511-183549/final",
+  "dataset": "ethrl2026/so101_pickup_20260509_185350_task3",
+  "frames_per_episode": 2,
+  "chunk_size": 50,
+  "test_a_open_loop_replay": {
+    "n_frames_used": 8,
+    "n_frames_failed": 0,
+    "per_joint_mae_mean": {
+      "shoulder_pan.pos": 19.173999786376953,
+      "shoulder_lift.pos": 32.157901763916016,
+      "elbow_flex.pos": 19.845399856567383,
+      "wrist_flex.pos": 31.89940071105957,
+      "wrist_roll.pos": 2.691499948501587,
+      "gripper.pos": 23.49329948425293
+    },
+    "per_joint_mae_median": {
+      "shoulder_pan.pos": 13.677000045776367,
+      "shoulder_lift.pos": 21.867900848388672,
+      "elbow_flex.pos": 15.752599716186523,
+      "wrist_flex.pos": 29.533899307250977,
+      "wrist_roll.pos": 2.231800079345703,
+      "gripper.pos": 16.105100631713867
+    },
+    "overall_mae_mean": 21.5435791015625,
+    "chunk_mse_mean": 988.4757528305054
+  },
+  "test_c_ood_prompts": {
+    "prompts": [
+      {
+        "prompt": "Put the banana in the purple colored bowl.",
+        "finite": true,
+        "out_of_range": false,
+        "min_per_joint": [
+          -10.0638427734375,
+          -97.86092376708984,
+          70.5247573852539,
+          -35.080928802490234,
+          -82.79417419433594,
+          38.772010803222656
+        ],
+        "max_per_joint": [
+          13.723167419433594,
+          -24.323570251464844,
+          105.31868743896484,
+          16.187179565429688,
+          -76.75528717041016,
+          63.18997573852539
+        ]
+      },
+      {
+        "prompt": "What is the meaning of life?",
+        "finite": true,
+        "out_of_range": false,
+        "min_per_joint": [
+          -1.6431846618652344,
+          -56.858985900878906,
+          59.62958526611328,
+          -54.141822814941406,
+          -82.80827331542969,
+          39.40176010131836
+        ],
+        "max_per_joint": [
+          25.451580047607422,
+          10.84698486328125,
+          105.31868743896484,
+          -26.868453979492188,
+          -78.53195190429688,
+          55.95859909057617
+        ]
+      },
+      {
+        "prompt": "",
+        "finite": true,
+        "out_of_range": false,
+        "min_per_joint": [
+          -31.810171127319336,
+          -67.316162109375,
+          43.13654327392578,
+          -41.213314056396484,
+          -83.10369873046875,
+          25.06023597717285
+        ],
+        "max_per_joint": [
+          6.034046173095703,
+          -9.907440185546875,
+          103.36803436279297,
+          -14.596702575683594,
+          -78.34334564208984,
+          45.662872314453125
+        ]
+      },
+      {
+        "prompt": "asdf qwerty zxcv banana bowl table",
+        "finite": true,
+        "out_of_range": false,
+        "min_per_joint": [
+          -10.336162567138672,
+          -43.23504638671875,
+          69.82465362548828,
+          -70.5641860961914,
+          -84.06827545166016,
+          16.98143768310547
+        ],
+        "max_per_joint": [
+          4.56500244140625,
+          11.811386108398438,
+          105.31868743896484,
+          -20.164512634277344,
+          -78.10050964355469,
+          43.997188568115234
+        ]
+      }
+    ],
+    "any_nonfinite": false,
+    "any_oor": false
+  },
+  "wall_seconds": 2.17
+}
