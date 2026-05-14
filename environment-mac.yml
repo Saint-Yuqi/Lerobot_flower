@@ -1,0 +1,108 @@
+name: flower
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      # ---- core DL stack (Mac wheels: CPU + MPS on Apple Silicon) ----
+      - torch==2.2.2
+      - torchvision==0.17.2
+      - torchmetrics==1.9.0
+      - pytorch-lightning==2.0.8
+      - transformers==4.46.3
+      - tokenizers==0.20.3
+      - timm==1.0.27
+      - peft>=0.11
+      - safetensors==0.7.0
+      - sentence-transformers==5.4.1
+
+      # ---- config / CLI ----
+      - hydra-core==1.1.1
+      - hydra-colorlog==1.2.0
+      - omegaconf==2.1.2
+      - draccus==0.11.5
+      - typer==0.25.1
+      - click==8.3.3
+      - colorlog==6.10.1
+      - python-dotenv==1.2.2
+
+      # ---- numerics / data ----
+      - numpy==1.26.4
+      - scipy==1.15.3
+      - scikit-learn==1.7.2
+      - pandas==2.1.4
+      - pyarrow==24.0.0
+      - einops==0.8.2
+      - einops-exts==0.0.4
+
+      # ---- IO / media ----
+      - av==17.0.1
+      - opencv-python==4.9.0.80
+      - pillow==11.3.0
+      - imageio==2.37.3
+      - imageio-ffmpeg==0.6.0
+      - jsonlines==4.0.0
+      - pyyaml==6.0.3
+
+      # ---- HF hub / logging ----
+      - huggingface-hub==0.36.2
+      - hf-xet==1.5.0
+      - wandb==0.26.1
+      - rich==15.0.0
+      - tqdm==4.67.3
+
+      # ---- misc utils kept for parity ----
+      - ftfy==6.3.1
+      - regex==2026.5.9
+      - matplotlib==3.10.9
+      - gitpython==3.1.50
+      - sentry-sdk==2.59.0
+
+      # ---- live-robot extras (uncomment if driving real SO-101 from Mac) ----
+      # - pyserial==3.5
+      # - feetech-servo-sdk==1.0.0
+
+# ---------------------------------------------------------------------------
+# What was removed vs. environment.yml and why:
+#
+# Linux-only conda system libs (don't exist on macOS):
+#   ld_impl_linux-64, libgcc, libgcc-ng, libgomp, libnsl, libxcrypt,
+#   libexpat, libffi, libsqlite, libuuid, libzlib, libnsl, ncurses, etc.
+#   -> Mac wheels statically link or use system frameworks; not needed.
+#
+# CUDA / NVIDIA wheels (no CUDA on macOS):
+#   nvidia-cublas-cu12, nvidia-cuda-cupti-cu12, nvidia-cuda-nvrtc-cu12,
+#   nvidia-cuda-runtime-cu12, nvidia-cudnn-cu12, nvidia-cufft-cu12,
+#   nvidia-curand-cu12, nvidia-cusolver-cu12, nvidia-cusparse-cu12,
+#   nvidia-nccl-cu12, nvidia-nvjitlink-cu12, nvidia-nvtx-cu12, triton
+#   -> On Mac, torch uses MPS (Apple Silicon) or CPU; these wheels would
+#      fail to install. torch's macOS wheel ships its own runtime.
+#
+# Unused by inference path (grep confirmed no imports):
+#   torchdiffeq, torchsde, deepdiff, moviepy, plotly, proglog, trampoline
+#
+# Hardware-only, lazy-imported (only needed for live SO-101 control):
+#   pyserial, feetech-servo-sdk  -> moved to optional block above.
+#
+# ---------------------------------------------------------------------------
+# Install (Apple Silicon or Intel Mac):
+#
+#   conda env create -f environment-mac.yml
+#   conda activate flower
+#
+# Verify MPS is picked up (Apple Silicon):
+#   python -c "import torch; print(torch.backends.mps.is_available())"
+#
+# Inference device selection in code should fall back gracefully, e.g.:
+#   device = ("cuda" if torch.cuda.is_available()
+#             else "mps" if torch.backends.mps.is_available()
+#             else "cpu")
+#
+# Known Mac caveats:
+#   - Some ops fall back to CPU under MPS. Set
+#       PYTORCH_ENABLE_MPS_FALLBACK=1
+#     in the shell before running inference if you hit an unsupported op.
+#   - float64 is not supported on MPS -> cast tensors to fp32 if needed.
+#   - torch.compile / Triton kernels: disable on Mac.
+# ---------------------------------------------------------------------------

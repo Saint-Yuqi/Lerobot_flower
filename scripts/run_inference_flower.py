@@ -92,8 +92,8 @@ def main() -> None:
     parser.add_argument("--prompt", required=True, help="Task instruction.")
     parser.add_argument("--max-seconds", type=float, default=20.0)
     parser.add_argument("--control-hz", type=float, default=30.0)
-    parser.add_argument("--device", default="cuda",
-                        help="Torch device: cuda | mps | cpu")
+    parser.add_argument("--device", default="auto",
+                        help="Torch device: auto | cuda | mps | cpu (auto picks cuda > mps > cpu)")
 
     parser.add_argument("--robot-port", default="/dev/tty.usbmodem5B141136551")
     parser.add_argument("--robot-id", default="follower_111")
@@ -111,6 +111,17 @@ def main() -> None:
     parser.add_argument("--wandb-project", default="Lerobot-rollouts")
     parser.add_argument("--wandb-mode", choices=["online", "offline"], default="online")
     args = parser.parse_args()
+
+    if args.device == "auto":
+        import torch
+        if torch.cuda.is_available():
+            args.device = "cuda"
+        elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+            args.device = "mps"
+            os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
+        else:
+            args.device = "cpu"
+        print(f"[infer] auto-selected device: {args.device}")
 
     ckpt_path, ckpt_source, ckpt_origin = _resolve_checkpoint(args.checkpoint)
     runtime = capture_runtime_metadata()
