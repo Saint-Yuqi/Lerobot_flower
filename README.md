@@ -76,6 +76,12 @@ python scripts/run_inference_flower.py \
     --max-seconds 20
 ```
 
+## Probe Testing
+Test the model's understanding of color and spatial language by running inference on a frame in which the arm is grasping the banana and to see if the predicted actions are consistent with the prompts. This can help identify if the model has learned to associate certain colors or spatial positions with the correct actions.
+```bash
+python scripts/probe_testing_flower.py   --checkpoint ethrl2026/so101-eval2-flower-reasoning-enhanced   --dataset ethrl2026/task2_20260509_stage2_random_lighting_augmented_2160   --episode 12   --frame 258   --prompt "Put the banana in the blue colored bowl."   --prompt "Put the banana in the red colored bowl."   --prompt "Put the banana in the green colored bowl."   --prompt "Put the banana in the left bowl."   --prompt "Put the banana in the middle bowl."   --prompt "Put the banana in the right bowl."
+```
+
 ## Data layout
 
 The HuggingFace dataset snapshots are **not** in this repo. The configs
