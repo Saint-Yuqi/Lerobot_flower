@@ -1,0 +1,103 @@
+# From-scratch (NO warm-start) on extra2 with the FULL augmentation stack.
+# Rationale: extra2 is small (90 ep) and overfits fast (verified) — maximal
+# augmentation is the regularizer. No init_from => fresh policy + extra2's
+# own normalizer stats (correct for from-scratch).
+#
+#   accelerate launch --num_processes 4 --mixed_precision bf16 \
+#     scripts/train_flower_accelerate.py \
+#     --config configs/train/full_eval1_extra2_scratch_allaug_mgpu.yaml
+
+experiment_name: eval1_flower_v1_extra2_scratch_allaug_mgpu_bs256_gc
+seed: 42
+
+data:
+  repo_id: ethrl2026/so101_pickup_20260515_200119_task1_extra2
+  revision: main
+  root: null
+  episodes: null
+  video_key: observation.images.main
+  frame_cache_dir: /home/yiyyan/.cache/flower_frames
+
+  prompt_augmentation:
+    enabled: true
+
+  # ALL augmentations on. 5 subset transforms (all applied per frame) +
+  # leading always-applied look picker. Aggressive by design — small set.
+  augmentations:
+    enabled: true
+    # Lightened per request: no gaussian_noise; color_jitter halved 0.2->0.1.
+    color_jitter:
+      brightness: 0.1
+      contrast: 0.1
+      saturation: 0.1
+    sharpness: 0.4
+    random_crop_pct: 0.95
+    gaussian_blur:
+      kernel_size: 5
+      sigma: [0.1, 1.0]
+    # gaussian_noise removed.
+    max_num_transforms: 4
+    random_order: false
+    visual_variants:
+      enabled: true
+      distribution: uniform
+
+  val:
+    fraction: 0.1
+    min_train_per_color: 3
+
+model:
+  # NO init_from -> fresh FlowerVLA + extra2-derived normalizer.
+  vlm_path: microsoft/Florence-2-base
+  chunk_size: 50
+  freeze_florence: true
+  freeze_vision_tower: true
+  use_proprio: false
+  use_second_view: false
+  image_hw: 224
+  default_action_type: 3
+  num_sampling_steps: 4
+  dit_dim: 512
+  n_heads: 16
+  n_layers: 12
+
+train:
+  batch_size: 256
+  grad_accum_steps: 1
+  num_workers: 8
+  prefetch_factor: 4
+  num_steps: 20000
+  # From-scratch LR (validated bs=256 value); not the fine-tune 2e-5.
+  lr: 7.5e-5
+  weight_decay: 1.0e-5
+  warmup_steps: 1500
+  max_grad_norm: 1.0
+  log_every: 50
+  save_every: 2000
+  eval_every: 250
+  output_dir: checkpoints/eval1_flower_v1_extra2_scratch_allaug_mgpu_bs256_gc
+  device: cuda
+  early_stop:
+    enabled: true
+    patience: 10
+    min_delta: 0.005
+    min_steps: 2500
+  phase_sampling:
+    enabled: true
+    weight_pregrasp: 2.0
+    open_frac: 0.6
+    close_frac: 0.4
+    min_amplitude: 5.0
+    post_close_margin: 3
+
+hf:
+  push: true
+  repo_id: "ethrl2026/so101-eval1-flower-v1-extra2-scratch-allaug-mgpu-bs256-gc"
+  private: true
+
+logging:
+  use_wandb: true
+  project: Lerobot
+  entity: yyyyorky-eth-z-rich
+  mode: online
+  tags: [eval1, flowervla, task1-extra2, scratch, all-aug, look-aug, blur, noise, prompt-aug, mgpu, ddp, bs256, gradclip]

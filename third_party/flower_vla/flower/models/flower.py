@@ -383,9 +383,15 @@ class FLOWERVLA(pl.LightningModule):
                 self.adaln[action_name] = SharedAdaLNController(dit_dim, global_conddim=dit_dim, use_cross_attn=use_cross_attn)
 
             if self.use_proprio:
-                # Add proprio encoder if needed for bimanual nav variant otherwise use zero encoder
-                self.proprio_encoders[action_name] = (Mlp(input_dim, dit_dim, out_features=dit_dim, drop=0.2).to(self.device) 
-                    if action_name == 'bimanual_nav' else ZeroEncoder(self.dit_dim, device=self.device))
+                # Vendored patch F7: SO-101 (type 3) must encode proprioception
+                # too. Upstream only gave 'bimanual_nav' a real proprio MLP and
+                # ZeroEncoder'd every other action space, which silently dropped
+                # the SO-101 joint state even with use_proprio=True. Give
+                # 'so101' a real Mlp (input_dim=6 -> dit_dim); others unchanged.
+                self.proprio_encoders[action_name] = (
+                    Mlp(input_dim, dit_dim, out_features=dit_dim, drop=0.2).to(self.device)
+                    if action_name in ('bimanual_nav', 'so101')
+                    else ZeroEncoder(self.dit_dim, device=self.device))
 
     def configure_optimizers(self):
         """Configure optimizers and schedulers"""
@@ -643,11 +649,21 @@ class FLOWERVLA(pl.LightningModule):
             return torch.zeros(batch_size, self.dit_dim, device=self.device)
         
         encoded_proprio = torch.zeros(batch_size, self.dit_dim, device=self.device, dtype=default_dtype)
-        
+
+        # Vendored patch F8: cond_dict['action_type'] is (B, win, 7) (patch
+        # F5), but proprio is (B, S). Row-indexing a 2-D proprio with a 3-D
+        # mask crashes (only ever hit now that SO-101 uses a real proprio
+        # encoder — F7). Collapse to one action id per sample (constant per
+        # sample by construction) before masking.
+        at = action_type.reshape(action_type.shape[0], -1)[:, 0]
         for action_name, action_idx in self.action_space_index.action_spaces.items():
-            mask = (action_type == action_idx)
+            mask = (at == action_idx)
             if mask.any():
-                encoded_proprio[mask] = self.proprio_encoders[action_name](proprio[mask]).squeeze(1)
+                pe = self.proprio_encoders[action_name](proprio[mask]).squeeze(1)
+                # Under accelerate bf16 autocast the MLP output is bf16 while
+                # encoded_proprio is default_dtype (fp32 master weights) —
+                # index_put requires matching dtypes.
+                encoded_proprio[mask] = pe.to(encoded_proprio.dtype)
         
         return encoded_proprio
 

@@ -1,0 +1,114 @@
+# Multi-GPU LARGE FlowerVLA on task1_all + task2 pre-grasp frames.
+#
+# "Large version" = Florence-2-large VLM backbone (upstream FlowerVLA's own
+# default; this repo normally downgrades to -base for VRAM — see
+# docs/flowervla_spike.md:35). DiT head dims (dit_dim/n_heads/n_layers) are
+# unchanged: upstream keeps them constant across base/large; the size jump is
+# the backbone (~0.23B -> ~0.77B). hidden_dim is read dynamically from the
+# VLM config (flower.py:127) and cond_linear/cond_norm adapt 768->1024 with
+# no code change. Florence-2-large is frozen, so no optimizer/grad state.
+#
+# Batch DOUBLED 256 -> 512 (per user). LR sqrt-scaled with the batch:
+#   7.5e-5 * sqrt(512/256) = 1.06e-4   (same sqrt rule as the bs256 recipe).
+#
+# Augmentation: color_jitter + sharpness + random_crop ONLY
+# (gaussian blur + gaussian noise intentionally removed for this run).
+#
+# Pull + cache already present on server:
+#   ~/.cache/flower_frames/ethrl2026__task1_all_plus_task2_pre_grasp__main.{u8,json}
+# Launch:
+#   accelerate launch --num_processes 4 --mixed_precision bf16 \
+#     scripts/train_flower_accelerate.py \
+#     --config configs/train/full_eval1_t1allp2pg_aug_mgpu_large_bs512_gc.yaml
+
+experiment_name: eval1_flower_v1_t1allp2pg_aug_mgpu_large_bs512_gc
+seed: 42
+
+data:
+  repo_id: ethrl2026/task1_all_plus_task2_pre_grasp
+  revision: main
+  root: null
+  episodes: null
+  video_key: observation.images.main
+  frame_cache_dir: /home/yiyyan/.cache/flower_frames
+
+  prompt_augmentation:
+    enabled: true
+
+  augmentations:
+    enabled: true
+    color_jitter:
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.2
+    sharpness: 0.4
+    random_crop_pct: 0.95
+    # gaussian_blur + gaussian_noise removed for this run.
+    # 3 transforms in the pool; apply all 3 each frame.
+    max_num_transforms: 3
+    random_order: false
+
+  val:
+    fraction: 0.1
+    min_train_per_color: 3
+
+model:
+  # LARGE backbone (was microsoft/Florence-2-base).
+  vlm_path: microsoft/Florence-2-large
+  chunk_size: 50
+  freeze_florence: true
+  freeze_vision_tower: true
+  use_proprio: false
+  use_second_view: false
+  image_hw: 224
+  default_action_type: 3
+  num_sampling_steps: 4
+  # DiT head unchanged — upstream keeps these constant across base/large.
+  dit_dim: 512
+  n_heads: 16
+  n_layers: 12
+
+train:
+  # GLOBAL batch — /4 ranks = 128 per-proc. Florence-2-large is frozen, so
+  # the jump vs the bs256/base run is forward-activation memory only.
+  # Estimate ~20-24 GB / 32 GB per GPU; if OOM, drop to 256 or grad_accum=2.
+  batch_size: 512
+  grad_accum_steps: 1
+  num_workers: 8
+  prefetch_factor: 4
+  num_steps: 20000
+  # sqrt-scaled for bs=512: 7.5e-5 * sqrt(512/256) = 1.06e-4.
+  lr: 1.06e-4
+  weight_decay: 1.0e-5
+  warmup_steps: 1500
+  # Gradient clipping (global norm). Off when absent/0.
+  max_grad_norm: 1.0
+  log_every: 50
+  save_every: 2000
+  eval_every: 250
+  output_dir: checkpoints/eval1_flower_v1_t1allp2pg_aug_mgpu_large_bs512_gc
+  device: cuda
+  early_stop:
+    enabled: true
+    patience: 10
+    min_delta: 0.005
+    min_steps: 2500
+  phase_sampling:
+    enabled: true
+    weight_pregrasp: 2.0
+    open_frac: 0.6
+    close_frac: 0.4
+    min_amplitude: 5.0
+    post_close_margin: 3
+
+hf:
+  push: true
+  repo_id: "ethrl2026/so101-eval1-flower-v1-t1allp2pg-aug-mgpu-large-bs512-gc"
+  private: true
+
+logging:
+  use_wandb: true
+  project: Lerobot
+  entity: yyyyorky-eth-z-rich
+  mode: online
+  tags: [eval1, flowervla, large, florence-large, task1-all-plus-task2-pregrasp, prompt-aug, image-aug, mgpu, ddp, bs512, gradclip]

@@ -36,7 +36,7 @@ import json
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import av
 import numpy as np
@@ -80,6 +80,8 @@ class FlowerSO101Dataset(torch.utils.data.Dataset):
             for Florence-2 which asserts square feature maps.
         max_decoded_videos: LRU cap on open PyAV containers per worker (default 8).
         video_backend: "pyav" (default; works for av1) or "opencv".
+        image_transforms: Optional callable applied to the image tensor post-resize,
+            pre-return — see `src.data.image_transforms.build_image_transforms`.
 
     Notes on action padding:
         When chunk_size > 1 and idx+k exceeds the episode end, we repeat the last
@@ -99,15 +101,19 @@ class FlowerSO101Dataset(torch.utils.data.Dataset):
         resize_hw: int | None = 224,
         max_decoded_videos: int = 8,
         video_backend: str = "pyav",
+        image_transforms: Callable[[torch.Tensor], torch.Tensor] | None = None,
+        frame_cache_dir: str | Path | None = None,
     ) -> None:
         super().__init__()
         self.repo_id = repo_id
         self.revision = revision
         self.video_key = video_key
         self.chunk_size = int(chunk_size)
+        self.frame_cache_dir = frame_cache_dir
         self.resize_hw = int(resize_hw) if resize_hw else None
         self.max_decoded_videos = int(max_decoded_videos)
         self.video_backend = video_backend
+        self.image_transforms = image_transforms
 
         self.root = Path(root).expanduser() if root else None
         if self.root is None:
@@ -186,6 +192,126 @@ class FlowerSO101Dataset(torch.utils.data.Dataset):
                 for k, v in raw_stats.items()
             }
 
+        # Optional decode-once frame cache (native uint8 memmap). When present
+        # __getitem__ reads the exact bytes _decode_frame_at would produce,
+        # skipping PyAV — bit-identical, just faster. None until built.
+        self._maybe_open_frame_cache()
+
+    # ------------------------------------------------- native frame cache
+
+    def _frame_cache_paths(self) -> tuple[Path, Path]:
+        safe = self.repo_id.replace("/", "__")
+        stem = f"{safe}__{self.revision}"
+        base = Path(self.frame_cache_dir).expanduser()
+        return base / f"{stem}.u8", base / f"{stem}.json"
+
+    def _maybe_open_frame_cache(self) -> None:
+        self._frame_cache = None
+        self._frame_cache_path = None
+        self._frame_cache_shape = None
+        if self.frame_cache_dir is None:
+            return
+        mm_path, meta_path = self._frame_cache_paths()
+        if not (mm_path.exists() and meta_path.exists()):
+            return  # not built yet — decode path used until build_frame_cache runs
+        meta = json.loads(meta_path.read_text())
+        if meta.get("repo_id") != self.repo_id or meta.get("revision") != self.revision:
+            raise ValueError(f"frame cache {meta_path} repo/revision mismatch: {meta}")
+        shape = (int(meta["n_frames"]), int(meta["height"]),
+                 int(meta["width"]), int(meta["channels"]))
+        self._frame_cache = np.memmap(mm_path, dtype=np.uint8, mode="r", shape=shape)
+        self._frame_cache_path = str(mm_path)
+        self._frame_cache_shape = shape
+
+    def _frame_addr(self, idx: int) -> tuple["_EpisodeIndex", int, float]:
+        """(episode, global_dataset_idx, timestamp) for a flat idx — image only.
+
+        Mirrors the locate logic in __getitem__ but reads just the timestamp;
+        used by build_frame_cache so __getitem__'s hot path stays untouched.
+        """
+        ep_i = int(np.searchsorted(self._cum_starts, idx, side="right") - 1)
+        ep = self._episodes[ep_i]
+        local_idx = idx - self._cum_starts[ep_i]
+        global_dataset_idx = int(ep.dataset_from_index + local_idx)
+        data_table = self._get_parquet_table(ep.data_chunk, ep.data_file)
+        ep_mask = data_table.column("episode_index").to_numpy() == ep.episode_index
+        ep_rows = data_table.filter(ep_mask).slice(local_idx, length=1)
+        timestamp = float(ep_rows.column("timestamp").to_pylist()[0])
+        return ep, global_dataset_idx, timestamp
+
+    def build_frame_cache(self, progress_every: int = 2000, verify_n: int = 16) -> None:
+        """Decode every frame once into a native-uint8 memmap keyed by global
+        dataset index. Must run on an UNfiltered dataset (episodes=None) so all
+        global indices are written. Verifies bit-equality vs fresh decode."""
+        if self.frame_cache_dir is None:
+            raise ValueError("frame_cache_dir not set")
+        mm_path, meta_path = self._frame_cache_paths()
+        mm_path.parent.mkdir(parents=True, exist_ok=True)
+
+        n_frames = int(max(int(e.dataset_to_index) for e in self._episodes))
+        ep0, _g0, ts0 = self._frame_addr(0)
+        probe = self._decode_frame_at(ep0, ts0)
+        h, w, c = int(probe.shape[0]), int(probe.shape[1]), int(probe.shape[2])
+
+        mm = np.memmap(mm_path, dtype=np.uint8, mode="w+", shape=(n_frames, h, w, c))
+        filled = np.zeros(n_frames, dtype=bool)
+        total = self._total_frames
+        for idx in range(total):
+            ep, gidx, ts = self._frame_addr(idx)
+            frame = self._decode_frame_at(ep, ts)
+            if frame.shape != (h, w, c):
+                raise ValueError(f"frame {idx} shape {frame.shape} != ({h},{w},{c})")
+            mm[gidx] = frame
+            filled[gidx] = True
+            if progress_every and idx % progress_every == 0:
+                print(f"[frame-cache] {idx}/{total} (gidx={gidx})", flush=True)
+        mm.flush()
+
+        n_missing = int((~filled).sum())
+        if n_missing:
+            raise RuntimeError(
+                f"frame cache has {n_missing} unfilled slots — gaps in global index"
+            )
+
+        rng = np.random.default_rng(0)
+        sample = rng.choice(total, size=min(verify_n, total), replace=False)
+        for idx in sample:
+            ep, gidx, ts = self._frame_addr(int(idx))
+            fresh = self._decode_frame_at(ep, ts)
+            if not np.array_equal(fresh, np.asarray(mm[gidx])):
+                raise RuntimeError(
+                    f"VERIFY FAIL idx={idx} gidx={gidx} — cache != fresh decode"
+                )
+        meta = {"repo_id": self.repo_id, "revision": self.revision,
+                "n_frames": n_frames, "height": h, "width": w, "channels": c}
+        meta_path.write_text(json.dumps(meta, indent=2))
+        print(f"[frame-cache] built {n_frames} frames {h}x{w}x{c} -> {mm_path} "
+              f"(verified {len(sample)} samples bit-identical)", flush=True)
+
+    # ----------------------------------------------------- pickling
+
+    # PyAV InputContainer and threading.local are not picklable. DataLoader
+    # workers with multiprocessing_context='spawn' (required under DDP) need
+    # to pickle the dataset; strip the caches and rebuild them in __setstate__
+    # so each worker starts fresh.
+    def __getstate__(self) -> dict:
+        state = self.__dict__.copy()
+        state["_parquet_cache"] = {}
+        state["_video_cache"] = {}
+        state["_video_cache_order"] = []
+        state["_tls"] = None
+        state["_frame_cache"] = None  # np.memmap reopened in __setstate__
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        self._tls = threading.local()
+        if self._frame_cache_path is not None and self._frame_cache_shape is not None:
+            self._frame_cache = np.memmap(
+                self._frame_cache_path, dtype=np.uint8, mode="r",
+                shape=tuple(self._frame_cache_shape),
+            )
+
     # ----------------------------------------------------- pytorch Dataset API
 
     def __len__(self) -> int:
@@ -222,8 +348,12 @@ class FlowerSO101Dataset(torch.utils.data.Dataset):
             actions[i] = np.asarray(action_full[src_i], dtype=np.float32)
             is_pad[i] = i >= n_valid
 
-        # Image frame at timestamp.
-        img = self._decode_frame_at(ep, timestamp)
+        # Image frame at timestamp. The memmap cache (when built) holds the
+        # exact bytes _decode_frame_at returns — bit-identical, skips PyAV.
+        if self._frame_cache is not None:
+            img = np.asarray(self._frame_cache[global_dataset_idx])
+        else:
+            img = self._decode_frame_at(ep, timestamp)
         # HWC uint8 -> CHW float32 in [0,1].
         img_t = torch.from_numpy(img).permute(2, 0, 1).contiguous().float().div_(255.0)
         if self.resize_hw is not None and (img_t.shape[-1] != self.resize_hw or img_t.shape[-2] != self.resize_hw):
@@ -231,6 +361,8 @@ class FlowerSO101Dataset(torch.utils.data.Dataset):
                 img_t.unsqueeze(0), size=(self.resize_hw, self.resize_hw),
                 mode="bilinear", align_corners=False, antialias=True,
             ).squeeze(0)
+        if self.image_transforms is not None:
+            img_t = self.image_transforms(img_t)
 
         task_str = self._task_lookup.get(task_index, "")
 

@@ -117,7 +117,7 @@ SmolVLA repo (copied at split time, will diverge as needed).
 
 | Path | Source | Patches |
 |---|---|---|
-| `third_party/flower_vla/` | `flower_calvin` upstream | F1 (224 resize), F2 (`obs_modalities="state_obs"`), F3 (FreqEmbedder 1-D input), F4 (`so101` action type 3, dim 6), F5 (`default_action_type` attribute) |
+| `third_party/flower_vla/` | `flower_calvin` upstream | F1 (224 resize), F2 (`obs_modalities="state_obs"`), F3 (FreqEmbedder 1-D input), F4 (`so101` action type 3, dim 6), F5 (`default_action_type` attribute), F6 (SDPA: drop illegal `is_causal=True` + explicit `attn_mask` combo so DiT runs on torch MPS/CPU backends), F7 (`so101` real proprio MLP — encode joint state; upstream ZeroEncoder'd it even with `use_proprio=True`), F8 (`encode_proprio`: collapse 3-D `action_type` mask for 2-D proprio + bf16/fp32 `index_put` dtype fix) |
 | `third_party/lerobot_hw/` | `lerobot 0.5.1` (subset) | PEP 695 `type X = ...` → plain assignment; all `from lerobot.X` rewritten to `from lerobot_hw.X` |
 
 `lerobot_hw` is **lazy-imported** by

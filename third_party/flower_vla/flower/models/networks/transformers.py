@@ -196,12 +196,21 @@ class FlowerAttention(nn.Module):
         else:
             mask = None
         # Use PyTorch's built-in scaled dot-product attention.
+        # F6 patch: when is_causal=True the branch above ALWAYS builds an
+        # explicit triangular `mask` (so `mask` is never None here in the
+        # causal case), and we pass it as `attn_mask=~mask`. Passing both an
+        # explicit attn_mask AND is_causal=True is forbidden by torch's SDPA
+        # contract ("Explicit attn_mask should not be set when is_causal=True")
+        # and raises on the torch 2.2.2 MPS/CPU math backend (older CUDA
+        # kernels silently tolerated it). The explicit ~mask already encodes
+        # the causal pattern, so is_causal must be False — numerically
+        # identical to the intended/server-trained behaviour in every branch.
         attn_output = F.scaled_dot_product_attention(
             q, k, v,
             attn_mask=None if mask is None else ~mask,
             dropout_p=self.attn_dropout.p if self.training else 0.0,
             scale=self.scale,
-            is_causal=is_causal if custom_attn_mask is None else False
+            is_causal=False,
         )
         out = attn_output.transpose(1, 2).reshape(B, T, C)
         out = self.resid_dropout(self.proj(out))

@@ -129,6 +129,13 @@ class FlowerVLAPolicy(nn.Module):
 
         # Inference chunk queue.
         self._chunk_queue: deque[torch.Tensor] = deque()
+        # Receding-horizon override. The model architecturally predicts
+        # `config.chunk_size` actions per forward (its trained
+        # `positional_encoding` is fixed at that size and cannot change for a
+        # loaded checkpoint). This knob instead controls how many of those
+        # predicted actions are *executed* before re-querying the policy.
+        # None -> execute the full predicted chunk (legacy behaviour).
+        self.exec_chunk_size: int | None = None
 
     # ---------- device sync ----------
     # FLOWERVLA is a pytorch-lightning LightningModule; its `self.device` property
@@ -234,6 +241,10 @@ class FlowerVLAPolicy(nn.Module):
             chunk = self.sample_chunk(observation)  # (1, T, A) typically
             if chunk.dim() == 3 and chunk.shape[0] == 1:
                 chunk = chunk[0]
+            n = self.exec_chunk_size
+            if n is not None:
+                n = max(1, min(int(n), int(chunk.shape[0])))
+                chunk = chunk[:n]  # receding horizon: re-plan after n steps
             for step in chunk:
                 self._chunk_queue.append(step)
         return self._chunk_queue.popleft()
@@ -281,6 +292,13 @@ class FlowerVLAPolicy(nn.Module):
         img = img.to(device=device, dtype=dtype)
         if state is not None:
             state = state.to(device=device, dtype=dtype)
+            # Normalize proprio the same way as the action target so the
+            # proprio encoder sees ~N(0,1) joint state (meanstd), not raw
+            # degrees. No-op for no-proprio checkpoints (state is discarded
+            # downstream), so this stays train/inference symmetric.
+            if (self.normalizer is not None
+                    and self.normalizer.has("observation.state")):
+                state = self.normalizer.normalize("observation.state", state)
 
         # Task strings.
         task = batch.get("task", [""] * B)

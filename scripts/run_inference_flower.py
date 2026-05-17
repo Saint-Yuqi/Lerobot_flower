@@ -92,6 +92,23 @@ def main() -> None:
     parser.add_argument("--prompt", required=True, help="Task instruction.")
     parser.add_argument("--max-seconds", type=float, default=20.0)
     parser.add_argument("--control-hz", type=float, default=30.0)
+    parser.add_argument(
+        "--chunk-size", type=int, default=None,
+        help="Receding-horizon execution length: execute only the first N "
+             "actions of each predicted chunk, then re-query the policy. "
+             "Default: execute the full model-native chunk. The model always "
+             "predicts policy.config.chunk_size actions (fixed at train time); "
+             "this only changes how often we re-plan. Clamped to "
+             "[1, policy chunk_size].",
+    )
+    parser.add_argument(
+        "--sampling-steps", type=int, default=None,
+        help="Number of rectified-flow Euler integration steps the DiT runs "
+             "to denoise each action chunk (e.g. --sampling-steps 6). "
+             "Default: use the checkpoint's config value. Not weight-coupled "
+             "(safe to change at inference): fewer = faster/coarser, "
+             "more = slower/finer. Must be >= 1.",
+    )
     parser.add_argument("--device", default="auto",
                         help="Torch device: auto | cuda | mps | cpu (auto picks cuda > mps > cpu)")
 
@@ -174,6 +191,28 @@ def main() -> None:
         chunk_size = int(policy.config.chunk_size)
         action_dim = int(policy.config.action_dim)
         print(f"[infer] policy: chunk_size={chunk_size} action_dim={action_dim}")
+
+        exec_chunk_size = chunk_size
+        if args.chunk_size is not None:
+            exec_chunk_size = max(1, min(int(args.chunk_size), chunk_size))
+            policy.exec_chunk_size = exec_chunk_size
+            if exec_chunk_size != args.chunk_size:
+                print(f"[infer] --chunk-size {args.chunk_size} clamped to "
+                      f"{exec_chunk_size} (model predicts {chunk_size}-step chunks).")
+            print(f"[infer] receding horizon: executing {exec_chunk_size}/"
+                  f"{chunk_size} actions per chunk before re-planning.")
+
+        ckpt_sampling_steps = int(policy.config.num_sampling_steps)
+        sampling_steps = ckpt_sampling_steps
+        if args.sampling_steps is not None:
+            sampling_steps = max(1, int(args.sampling_steps))
+            policy.config.num_sampling_steps = sampling_steps
+            policy.model.num_sampling_steps = sampling_steps
+            print(f"[infer] sampling steps overridden: {sampling_steps} "
+                  f"(checkpoint default was {ckpt_sampling_steps}).")
+        else:
+            print(f"[infer] sampling steps: {sampling_steps} (checkpoint default).")
+        meta_dict["policy_num_sampling_steps"] = sampling_steps
         try:
             param_count = sum(int(p.numel()) for p in policy.parameters() if p.requires_grad)
             meta_dict["policy_active_param_count"] = param_count
@@ -198,7 +237,7 @@ def main() -> None:
         if isinstance(logger, RolloutLogger):
             logger.action_dim = action_dim
             logger.state_dim = action_dim
-            logger.chunk_size = chunk_size
+            logger.chunk_size = exec_chunk_size
             (logger.run_dir / "meta.json").write_text(
                 json.dumps(meta_dict, indent=2, default=str)
             )

@@ -151,11 +151,20 @@ def main() -> int:
         print(f"[train] color-stratified split: train_eps={len(train_eps)} val_eps={len(val_eps)} -> {val_eps}")
 
     # ---- Build train + val datasets (re-using probe's root for both). ----
+    # Image augmentations are train-only (val stays clean for stable eval metrics).
+    from src.data.image_transforms import build_image_transforms
+    image_transforms = build_image_transforms(
+        dcfg.get("augmentations"), image_hw=int(mcfg.get("image_hw", 224))
+    )
+    if image_transforms is not None:
+        print(f"[train] image_transforms: enabled ({dcfg.get('augmentations')})")
+
     dataset = FlowerSO101Dataset(
         repo_id=repo_id, root=ds_probe.root, episodes=train_eps,
         chunk_size=int(mcfg["chunk_size"]),
         video_key=dcfg.get("video_key", "observation.images.main"),
         resize_hw=int(mcfg.get("image_hw", 224)),
+        image_transforms=image_transforms,
     )
     val_dataset: FlowerSO101Dataset | None = None
     if val_eps:
@@ -166,6 +175,14 @@ def main() -> int:
             resize_hw=int(mcfg.get("image_hw", 224)),
         )
     print(f"[train] train frames: {len(dataset)}  val frames: {len(val_dataset) if val_dataset else 0}")
+
+    # Optional per-getitem prompt augmentation (task1 only — color-keyed prompts).
+    # Train-only; val keeps original episode prompts.
+    prompt_aug_cfg = dcfg.get("prompt_augmentation") or {}
+    if prompt_aug_cfg.get("enabled"):
+        from src.data.task1_color_prompt import Task1ColorPromptDataset
+        dataset = Task1ColorPromptDataset(base=dataset, seed=int(cfg.get("seed", 42)))
+        print("[train] prompt_augmentation: enabled (Task1ColorPromptDataset)")
 
     # Stats from the FULL dataset (probe), not the filtered split — normalization
     # constants should be stable across splits.

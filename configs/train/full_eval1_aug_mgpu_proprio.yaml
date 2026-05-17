@@ -1,0 +1,110 @@
+# Multi-GPU FlowerVLA on task1_20260509_plus — IDENTICAL recipe to
+# full_eval1_aug_mgpu.yaml (which produced ethrl2026/so101-eval1-flower-v1-aug-mgpu),
+# the ONLY change being `model.use_proprio: true`: the robot's current 6-DoF
+# joint state is now fed to the policy alongside vision + language.
+#
+# Requires the two vendored code changes:
+#   * flower.py F6 — SO-101 gets a real proprio MLP (was ZeroEncoder, which
+#     silently dropped joint state even with use_proprio=True).
+#   * policy.py — observation.state is meanstd-normalized before the proprio
+#     encoder (same normalization contract as the action target).
+#
+# From-scratch (NO init_from): the existing checkpoint has no proprio-encoder
+# weights, and a clean "+proprio, same data" comparison must train from
+# scratch with the identical recipe. Frame cache added (pure speedup,
+# bit-identical; server cache for task1_20260509_plus already present).
+#
+# Launch:
+#   accelerate launch --num_processes 4 --mixed_precision bf16 \
+#     scripts/train_flower_accelerate.py \
+#     --config configs/train/full_eval1_aug_mgpu_proprio.yaml
+
+experiment_name: eval1_flower_v1_aug_mgpu_proprio
+seed: 42
+
+data:
+  repo_id: ethrl2026/task1_20260509_plus
+  # task1_20260509_plus has no `v3.0` tag — use the default branch.
+  revision: main
+  root: null
+  episodes: null
+  video_key: observation.images.main
+  frame_cache_dir: /home/yiyyan/.cache/flower_frames
+
+  # Train-only prompt augmentation (Task1ColorPromptDataset).
+  prompt_augmentation:
+    enabled: true
+
+  # Train-only image augmentation (ImageTransformsConfig).
+  augmentations:
+    enabled: true
+    color_jitter:
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.2
+    sharpness: 0.4
+    random_crop_pct: 0.95
+    max_num_transforms: 3
+    random_order: false
+
+  val:
+    fraction: 0.1
+    min_train_per_color: 3
+
+model:
+  vlm_path: microsoft/Florence-2-base
+  chunk_size: 50
+  freeze_florence: true
+  freeze_vision_tower: true
+  # THE change vs full_eval1_aug_mgpu.yaml: feed the 6-DoF joint state.
+  use_proprio: true
+  use_second_view: false
+  image_hw: 224
+  default_action_type: 3
+  num_sampling_steps: 4
+  dit_dim: 512
+  n_heads: 16
+  n_layers: 12
+
+train:
+  # GLOBAL batch size — train_flower_accelerate.py divides by world_size.
+  # 1024 / 4 ranks = 256 per-proc — same as the no-proprio run (~15 GB/GPU;
+  # the proprio MLP is tiny, no material memory change).
+  batch_size: 1024
+  grad_accum_steps: 1
+  num_workers: 24
+  prefetch_factor: 4
+  num_steps: 20000
+  # LR sqrt-scaled from the bs=128 baseline (5e-5 * sqrt(1024/128) ≈ 1.4e-4).
+  lr: 1.5e-4
+  weight_decay: 1.0e-5
+  warmup_steps: 1500
+  log_every: 50
+  save_every: 2000
+  eval_every: 250
+  output_dir: checkpoints/eval1_flower_v1_aug_mgpu_proprio
+  device: cuda
+  early_stop:
+    enabled: true
+    patience: 10
+    min_delta: 0.005
+    min_steps: 2500
+  phase_sampling:
+    enabled: true
+    weight_pregrasp: 2.0
+    open_frac: 0.6
+    close_frac: 0.4
+    min_amplitude: 5.0
+    post_close_margin: 3
+
+hf:
+  push: true
+  repo_id: "ethrl2026/so101-eval1-flower-v1-aug-mgpu-proprio"
+  private: true
+
+logging:
+  use_wandb: true
+  project: Lerobot
+  entity: yyyyorky-eth-z-rich
+  mode: online
+  tags: [eval1, flowervla, task1-plus, prompt-aug, image-aug, mgpu, ddp, proprio, joint-state]

@@ -1,0 +1,105 @@
+# Multi-GPU FlowerVLA training on the FULL task1 collection (task1_all),
+# with prompt + image augmentation incl. gaussian blur + mild gaussian noise.
+# Carries the validated bs=1024 / lr=1.5e-4 setup from the task1_plus run.
+#
+# Pull first:
+#   python scripts/pull_dataset.py ethrl2026/task1_all --revision main
+# Launch:
+#   accelerate launch --num_processes 4 --mixed_precision bf16 \
+#     scripts/train_flower_accelerate.py --config configs/train/full_eval1_all_aug_mgpu.yaml
+
+experiment_name: eval1_flower_v1_all_aug_mgpu
+seed: 42
+
+data:
+  repo_id: ethrl2026/task1_all
+  revision: main
+  root: null
+  episodes: null
+  video_key: observation.images.main
+  # Decode-once native-uint8 memmap (bit-identical to PyAV decode). Build via
+  #   python scripts/build_frame_cache.py ethrl2026/task1_all \
+  #     --revision main --cache-dir /home/yiyyan/.cache/flower_frames
+  frame_cache_dir: /home/yiyyan/.cache/flower_frames
+
+  prompt_augmentation:
+    enabled: true
+
+  augmentations:
+    enabled: true
+    color_jitter:
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.2
+    sharpness: 0.4
+    random_crop_pct: 0.95
+    # A little defocus/motion blur — natural for robot cameras.
+    gaussian_blur:
+      kernel_size: 5
+      sigma: [0.1, 1.0]
+    # Mild sensor noise. Kept small so it doesn't erode the bowl-color cue
+    # the task depends on (color_jitter already covers color robustness).
+    gaussian_noise: 0.02
+    # 5 transforms in the pool; apply 4 per frame so they rarely all stack.
+    max_num_transforms: 4
+    random_order: false
+
+  val:
+    fraction: 0.1
+    min_train_per_color: 3
+
+model:
+  vlm_path: microsoft/Florence-2-base
+  chunk_size: 50
+  freeze_florence: true
+  freeze_vision_tower: true
+  use_proprio: false
+  use_second_view: false
+  image_hw: 224
+  default_action_type: 3
+  num_sampling_steps: 4
+  dit_dim: 512
+  n_heads: 16
+  n_layers: 12
+
+train:
+  # GLOBAL batch — divided by world_size (4) -> per_proc=256, ~17 GB / 32 GB.
+  batch_size: 1024
+  grad_accum_steps: 1
+  # With the frame cache, frames come from the OS page cache (memmap), not
+  # PyAV decode — 8 workers/rank is plenty (24 caused CPU oversubscription).
+  num_workers: 8
+  prefetch_factor: 4
+  num_steps: 20000
+  lr: 1.5e-4
+  weight_decay: 1.0e-5
+  warmup_steps: 1500
+  log_every: 50
+  save_every: 2000
+  eval_every: 250
+  output_dir: checkpoints/eval1_flower_v1_all_aug_mgpu
+  device: cuda
+  early_stop:
+    enabled: true
+    patience: 10
+    min_delta: 0.005
+    min_steps: 2500
+  phase_sampling:
+    enabled: true
+    weight_pregrasp: 2.0
+    open_frac: 0.6
+    close_frac: 0.4
+    min_amplitude: 5.0
+    post_close_margin: 3
+
+hf:
+  push: true
+  repo_id: "ethrl2026/so101-eval1-flower-v1-all-aug-mgpu"
+  private: true
+
+logging:
+  use_wandb: true
+  project: Lerobot
+  entity: yyyyorky-eth-z-rich
+  mode: online
+  tags: [eval1, flowervla, task1-all, prompt-aug, image-aug, blur, noise, mgpu, ddp]

@@ -1,0 +1,94 @@
+# FlowerVLA training on task1 with prompt + image augmentation enabled.
+# Sibling of full_eval1.yaml — same model/data/train recipe, plus two
+# train-only augmentation hooks. Val stays clean for stable eval metrics.
+
+experiment_name: eval1_flower_v1_aug
+seed: 42
+
+data:
+  repo_id: ethrl2026/task1_20260509_plus
+  # `root: null` → snapshot_download on first run. To pre-cache and avoid HF
+  # Hub 429s when multiple jobs launch concurrently, run e.g.
+  #   huggingface-cli download --repo-type dataset --revision v3.0 \
+  #     ethrl2026/task1_20260509_plus \
+  #     --local-dir /shares/feldmann.ics.mnf.uzh/Yuqi/Lerobot/data/hf/task1_20260509_plus
+  # then set `root` to that path.
+  root: null
+  episodes: null
+  video_key: observation.images.main
+
+  # Task1ColorPromptDataset — rewrites sample["task"] to one of 20 templates
+  # per __getitem__, color detected from the episode's existing task string.
+  # See src/data/task1_color_prompt.py. Train-only.
+  prompt_augmentation:
+    enabled: true
+
+  # ImageTransformsConfig — applies inside LeRobotDataset's dataset_reader.
+  # Each scalar is the half-width of a uniform jitter range (s=0.2 ⇒ factor
+  # uniform in [0.8, 1.2]). Train-only.
+  augmentations:
+    enabled: true
+    color_jitter:
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.2
+    sharpness: 0.4
+    random_crop_pct: 0.95
+    max_num_transforms: 3
+    random_order: false
+
+  val:
+    fraction: 0.1
+    min_train_per_color: 3
+
+model:
+  vlm_path: microsoft/Florence-2-base
+  chunk_size: 50
+  freeze_florence: true
+  freeze_vision_tower: true
+  use_proprio: false
+  use_second_view: false
+  image_hw: 224
+  default_action_type: 3       # so101 (vendored F5 patch)
+  num_sampling_steps: 4
+  dit_dim: 512
+  n_heads: 16
+  n_layers: 12
+
+train:
+  batch_size: 32               # lower than SmolVLA's 128 — Florence-2 backbone heavier on RAM
+  grad_accum_steps: 4          # effective batch=128, same gradient as smolvla side
+  num_workers: 4
+  num_steps: 20000
+  lr: 5.0e-5
+  weight_decay: 1.0e-5
+  warmup_steps: 500
+  log_every: 50
+  save_every: 2000
+  eval_every: 250
+  output_dir: checkpoints/eval1_flower_v1_aug
+  device: cuda
+  early_stop:
+    enabled: true
+    patience: 10
+    min_delta: 0.005
+    min_steps: 2500
+  phase_sampling:
+    enabled: true              # phase-weighted sampling ON for A/B; weight_pregrasp=2.0
+    weight_pregrasp: 2.0       # 1.0 = uniform-with-replacement (NOT identical to shuffle=True)
+    open_frac: 0.6             # fraction of (g_max - g_min) above min for "open"
+    close_frac: 0.4            # below this for "closed"
+    min_amplitude: 5.0         # episodes with smaller gripper motion fall back to all-pregrasp
+    post_close_margin: 3       # frames after first close to confirm stability (~100ms @30fps)
+
+hf:
+  push: true
+  repo_id: "ethrl2026/so101-eval1-flower-v1-aug"
+  private: true
+
+logging:
+  use_wandb: true
+  project: Lerobot
+  entity: yyyyorky-eth-z-rich
+  mode: online
+  tags: [eval1, flowervla, task1-plus, prompt-aug, image-aug]

@@ -1,0 +1,102 @@
+# Warm-start fine-tune: init from ethrl2026/so101-eval1-flower-v1-aug-mgpu
+# (the 224558 checkpoint trained on task1_20260509_plus), continue on its
+# *additional* in-distribution data: ethrl2026/so101_pickup_20260515_200119_task1_extra2.
+#
+# Standard aug ONLY (color_jitter+sharpness+crop+prompt-aug) — matches the
+# checkpoint's original training so this is a clean "does the extra data
+# help" continuation (no look-aug; look-aug didn't exist at checkpoint time).
+#
+# Normalizer: checkpoint's (true warm-start). Verified the new dataset's
+# action/state stats are well-aligned with the checkpoint's normalizer
+# (same SO-101 task1-pickup family) — unlike the task2-pre-grasp run.
+#
+# Launch:
+#   accelerate launch --num_processes 4 --mixed_precision bf16 \
+#     scripts/train_flower_accelerate.py \
+#     --config configs/train/full_eval1_extra2_finetune_mgpu.yaml
+
+experiment_name: eval1_flower_v1_extra2_finetune_mgpu_bs256_gc
+seed: 42
+
+data:
+  repo_id: ethrl2026/so101_pickup_20260515_200119_task1_extra2
+  revision: main
+  root: null
+  episodes: null
+  video_key: observation.images.main
+  frame_cache_dir: /home/yiyyan/.cache/flower_frames
+
+  prompt_augmentation:
+    enabled: true
+
+  augmentations:
+    enabled: true
+    color_jitter:
+      brightness: 0.2
+      contrast: 0.2
+      saturation: 0.2
+    sharpness: 0.4
+    random_crop_pct: 0.95
+    max_num_transforms: 3
+    random_order: false
+    # No look-aug — clean continuation of the checkpoint's training recipe.
+
+  val:
+    fraction: 0.1
+    min_train_per_color: 3
+
+model:
+  init_from: ethrl2026/so101-eval1-flower-v1-aug-mgpu
+  vlm_path: microsoft/Florence-2-base
+  chunk_size: 50
+  freeze_florence: true
+  freeze_vision_tower: true
+  use_proprio: false
+  use_second_view: false
+  image_hw: 224
+  default_action_type: 3
+  num_sampling_steps: 4
+  dit_dim: 512
+  n_heads: 16
+  n_layers: 12
+
+train:
+  batch_size: 256
+  grad_accum_steps: 1
+  num_workers: 8
+  prefetch_factor: 4
+  num_steps: 20000
+  # Small LR for warm-start fine-tuning.
+  lr: 2.0e-5
+  weight_decay: 1.0e-5
+  warmup_steps: 300
+  max_grad_norm: 1.0
+  log_every: 50
+  save_every: 2000
+  eval_every: 250
+  output_dir: checkpoints/eval1_flower_v1_extra2_finetune_mgpu_bs256_gc
+  device: cuda
+  early_stop:
+    enabled: true
+    patience: 10
+    min_delta: 0.005
+    min_steps: 2500
+  phase_sampling:
+    enabled: true
+    weight_pregrasp: 2.0
+    open_frac: 0.6
+    close_frac: 0.4
+    min_amplitude: 5.0
+    post_close_margin: 3
+
+hf:
+  push: true
+  repo_id: "ethrl2026/so101-eval1-flower-v1-extra2-finetune-mgpu-bs256-gc"
+  private: true
+
+logging:
+  use_wandb: true
+  project: Lerobot
+  entity: yyyyorky-eth-z-rich
+  mode: online
+  tags: [eval1, flowervla, task1-extra2, finetune, warmstart, prompt-aug, image-aug, mgpu, ddp, bs256, gradclip]

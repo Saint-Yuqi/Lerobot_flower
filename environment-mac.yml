@@ -5,6 +5,13 @@ dependencies:
   - python=3.10
   - pip
   - pip:
+      # ---- build tooling ----
+      # pytorch-lightning==2.0.8 (lightning_fabric) calls
+      # pkg_resources.declare_namespace at import; setuptools 81+ dropped
+      # pkg_resources, and a bare pip env no longer ships setuptools by
+      # default. Pin <81 so the inference import path works.
+      - setuptools<81
+
       # ---- core DL stack (Mac wheels: CPU + MPS on Apple Silicon) ----
       - torch==2.2.2
       - torchvision==0.17.2
@@ -59,9 +66,12 @@ dependencies:
       - gitpython==3.1.50
       - sentry-sdk==2.59.0
 
-      # ---- live-robot extras (uncomment if driving real SO-101 from Mac) ----
-      # - pyserial==3.5
-      # - feetech-servo-sdk==1.0.0
+      # ---- live-robot extras (needed to drive a real SO-101 from Mac) ----
+      # The vendored lerobot_hw motors bus imports these at module load on
+      # the live path (dry-run never touches them).
+      - pyserial==3.5
+      - feetech-servo-sdk==1.0.0
+      - deepdiff==9.0.0
 
 # ---------------------------------------------------------------------------
 # What was removed vs. environment.yml and why:
@@ -80,7 +90,8 @@ dependencies:
 #      fail to install. torch's macOS wheel ships its own runtime.
 #
 # Unused by inference path (grep confirmed no imports):
-#   torchdiffeq, torchsde, deepdiff, moviepy, plotly, proglog, trampoline
+#   torchdiffeq, torchsde, moviepy, plotly, proglog, trampoline
+#   (deepdiff IS needed on the live-robot path -> see live-robot extras above)
 #
 # Hardware-only, lazy-imported (only needed for live SO-101 control):
 #   pyserial, feetech-servo-sdk  -> moved to optional block above.
