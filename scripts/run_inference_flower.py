@@ -123,6 +123,13 @@ def main() -> None:
     parser.add_argument("--no-log", action="store_true")
     parser.add_argument("--frame-every", type=int, default=10)
     parser.add_argument("--video", action="store_true")
+    parser.add_argument(
+        "--crop", default=None,
+        help="Override the checkpoint's image crop as 'x0,y0,x1,y1'. By "
+             "default the crop is read from the checkpoint config "
+             "(policy.config.crop) so inference framing always matches "
+             "training automatically. Use 'none' to force full-frame.",
+    )
 
     parser.add_argument("--no-wandb", action="store_true")
     parser.add_argument("--wandb-project", default="Lerobot-rollouts")
@@ -191,6 +198,22 @@ def main() -> None:
         chunk_size = int(policy.config.chunk_size)
         action_dim = int(policy.config.action_dim)
         print(f"[infer] policy: chunk_size={chunk_size} action_dim={action_dim}")
+
+        # Inference crop defaults to the crop baked into the checkpoint
+        # (policy.config.crop) so framing always matches training. --crop
+        # overrides; '--crop none' forces full frame.
+        crop = getattr(policy.config, "crop", None)
+        if args.crop is not None:
+            if str(args.crop).strip().lower() in ("none", "off", ""):
+                crop = None
+            else:
+                crop = [int(v) for v in str(args.crop).split(",")]
+                if len(crop) != 4:
+                    raise SystemExit("--crop must be 'x0,y0,x1,y1' or 'none'")
+        print(f"[infer] image crop: "
+              f"{crop if crop is not None else 'OFF (full frame)'} "
+              f"(source: {'--crop override' if args.crop is not None else 'checkpoint config'})")
+        meta_dict["inference_crop"] = crop
 
         exec_chunk_size = chunk_size
         if args.chunk_size is not None:
@@ -327,6 +350,7 @@ def main() -> None:
             camera_key=args.camera_key,
             image_hw=int(policy.config.image_hw),
             video_key=policy.config.video_key,
+            crop=crop,
             on_step=_on_step,
             on_chunk=_on_chunk,
         )
